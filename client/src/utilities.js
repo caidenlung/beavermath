@@ -39,7 +39,7 @@ function convertToJSON(res) {
 // Returns a Promise to a JSON Object.
 export function get(endpoint, params = {}) {
   const fullPath = endpoint + "?" + formatParams(params);
-  return fetch(fullPath)
+  return fetch(fullPath, { credentials: "same-origin" })
     .then(convertToJSON)
     .catch((error) => {
       // give a useful error message
@@ -52,6 +52,7 @@ export function get(endpoint, params = {}) {
 export function post(endpoint, params = {}) {
   return fetch(endpoint, {
     method: "post",
+    credentials: "same-origin",
     headers: { "Content-type": "application/json" },
     body: JSON.stringify(params),
   })

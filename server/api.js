@@ -62,14 +62,21 @@ async function fetchLeaderboard() {
 
   const users = await User.find({ highScore: { $gt: 0 } })
     .sort({ highScore: -1 })
-    .limit(10)
+    .limit(30)
     .select("name highScore")
     .lean();
 
-  return users.map((user) => ({
-    name: user.name,
-    score: user.highScore,
-  }));
+  // Dedupe display names (duplicate Google accounts) keeping the best score
+  const bestByName = new Map();
+  for (const user of users) {
+    const name = user.name || "unknown";
+    const prev = bestByName.get(name);
+    if (!prev || user.highScore > prev.score) {
+      bestByName.set(name, { name, score: user.highScore });
+    }
+  }
+
+  return [...bestByName.values()].sort((a, b) => b.score - a.score).slice(0, 10);
 }
 
 async function emitLeaderboard() {

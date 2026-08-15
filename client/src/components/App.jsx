@@ -18,23 +18,29 @@ const App = () => {
   const [userId, setUserId] = useState(undefined);
   const [userName, setUserName] = useState("");
   const [fullName, setFullName] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    get("/api/whoami").then((user) => {
-      if (user._id) {
-        // they are registed in the database, and currently logged in.
-        setUserId(user._id);
-        setUserName(user.name.split(" ")[0]); // Get only first name
-        setFullName(user.name); // Get full name
-
-        // Let the user stay on their current page
-      } else if (location.pathname !== "/") {
-        // If not logged in and not on login page, redirect to login
-        navigate("/");
-      }
-    });
+    get("/api/whoami")
+      .then((user) => {
+        if (user._id) {
+          setUserId(user._id);
+          setUserName(user.name.split(" ")[0]);
+          setFullName(user.name);
+        } else if (location.pathname !== "/") {
+          navigate("/");
+        }
+      })
+      .catch(() => {
+        if (location.pathname !== "/") {
+          navigate("/");
+        }
+      })
+      .finally(() => {
+        setAuthChecked(true);
+      });
   }, []);
 
   const handleLogin = (credentialResponse) => {
@@ -43,8 +49,9 @@ const App = () => {
     console.log(`Logged in as ${decodedCredential.name}`);
     post("/api/login", { token: userToken }).then((user) => {
       setUserId(user._id);
-      setUserName(user.name.split(" ")[0]); // Get first name
-      setFullName(user.name); // Set full name
+      setUserName(user.name.split(" ")[0]);
+      setFullName(user.name);
+      setAuthChecked(true);
       navigate("/home");
       post("/api/initsocket", { socketid: socket.id });
     });
@@ -53,6 +60,7 @@ const App = () => {
   const handleLogout = () => {
     setUserId(undefined);
     setUserName("");
+    setFullName("");
     post("/api/logout");
     navigate("/");
   };
@@ -61,6 +69,7 @@ const App = () => {
     userId,
     userName,
     fullName,
+    authChecked,
     handleLogin,
     handleLogout,
   };

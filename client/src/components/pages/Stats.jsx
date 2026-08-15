@@ -6,8 +6,9 @@ import { get } from "../../utilities";
 
 const Stats = () => {
   const navigate = useNavigate();
-  const { userId } = useContext(UserContext);
+  const { userId, authChecked } = useContext(UserContext);
   const [scores, setScores] = useState([]);
+  const [loadState, setLoadState] = useState("loading"); // loading | ready | error
   const [stats, setStats] = useState({
     highScore: 0,
     totalGames: 0,
@@ -16,19 +17,22 @@ const Stats = () => {
   });
 
   useEffect(() => {
+    if (!authChecked) return;
+
     if (!userId) {
       navigate("/");
       return;
     }
 
     let cancelled = false;
+    setLoadState("loading");
 
     get("/api/scores")
       .then((response) => {
         if (cancelled) return;
 
-        const nextScores = response.scores || [];
-        let highScore = response.highScore || 0;
+        const nextScores = Array.isArray(response.scores) ? response.scores : [];
+        let highScore = Number(response.highScore) || 0;
         for (const s of nextScores) {
           if (s > highScore) highScore = s;
         }
@@ -43,15 +47,17 @@ const Stats = () => {
               : 0,
           questionsAnswered: nextScores.reduce((a, b) => a + b, 0),
         });
+        setLoadState("ready");
       })
       .catch((err) => {
         console.log("Failed to get stats:", err);
+        if (!cancelled) setLoadState("error");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [userId, navigate]);
+  }, [userId, authChecked, navigate]);
 
   const handleBackToHome = () => {
     navigate("/");
@@ -70,6 +76,15 @@ const Stats = () => {
               back to home
             </button>
           </div>
+
+          {loadState === "loading" && (
+            <p className="text-sm text-stone-400 font-mono">loading stats...</p>
+          )}
+          {loadState === "error" && (
+            <p className="text-sm text-red-400 font-mono">
+              could not load stats — try refreshing or logging in again
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-stone-800/50 rounded-lg p-6 border border-stone-700">
