@@ -1,26 +1,29 @@
 import React, { useState, useEffect } from "react";
 import { get } from "../../../utilities";
 
-const MeanScore = () => {
+/** Optional `scores` prop avoids a duplicate fetch when a parent already loaded them. */
+const MeanScore = ({ scores: scoresProp }) => {
   const [meanScore, setMeanScore] = useState(0);
 
   useEffect(() => {
-    getMeanScore();
-  }, []);
-
-  const getMeanScore = async () => {
-    try {
-      const response = await get("/api/scores");
-      const scores = response.scores;
+    const apply = (scores) => {
       if (scores.length > 0) {
         const sum = scores.reduce((acc, score) => acc + score, 0);
-        const mean = sum / scores.length;
-        setMeanScore(mean.toFixed(2));
+        setMeanScore((sum / scores.length).toFixed(2));
+      } else {
+        setMeanScore(0);
       }
-    } catch (err) {
-      console.log("Failed to get mean score:", err);
+    };
+
+    if (Array.isArray(scoresProp)) {
+      apply(scoresProp);
+      return;
     }
-  };
+
+    get("/api/scores")
+      .then((response) => apply(response.scores || []))
+      .catch((err) => console.log("Failed to get mean score:", err));
+  }, [scoresProp]);
 
   return (
     <div className="bg-zinc-800/50 rounded-lg p-4 border border-zinc-700">

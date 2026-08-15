@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -10,27 +10,10 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
-import { get } from "../../../utilities";
 
-// Register ChartJS components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-const Graph = () => {
-  const [scores, setScores] = useState([]);
-
-  useEffect(() => {
-    getScores();
-  }, []);
-
-  const getScores = async () => {
-    try {
-      const response = await get("/api/scores");
-      setScores(response.scores);
-    } catch (err) {
-      console.log("Failed to get scores:", err);
-    }
-  };
-
+const Graph = ({ scores = [] }) => {
   const data = {
     labels: scores.map((_, index) => `${index + 1}`),
     datasets: [

@@ -7,6 +7,7 @@ import { get } from "../../utilities";
 const Stats = () => {
   const navigate = useNavigate();
   const { userId } = useContext(UserContext);
+  const [scores, setScores] = useState([]);
   const [stats, setStats] = useState({
     highScore: 0,
     totalGames: 0,
@@ -17,35 +18,40 @@ const Stats = () => {
   useEffect(() => {
     if (!userId) {
       navigate("/");
+      return;
     }
-    getStats();
-  }, [userId, navigate]);
 
-  const getStats = async () => {
-    try {
-      const response = await get("/api/scores");
-      const scores = response.scores || [];
-      let highScore = response.highScore || 0;
-      for (const s of scores) {
-        if (s > highScore) highScore = s;
-      }
-      const totalGames = scores.length;
-      const averageScore =
-        scores.length > 0
-          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-          : 0;
-      const questionsAnswered = scores.reduce((a, b) => a + b, 0);
+    let cancelled = false;
 
-      setStats({
-        highScore,
-        totalGames,
-        averageScore,
-        questionsAnswered,
+    get("/api/scores")
+      .then((response) => {
+        if (cancelled) return;
+
+        const nextScores = response.scores || [];
+        let highScore = response.highScore || 0;
+        for (const s of nextScores) {
+          if (s > highScore) highScore = s;
+        }
+
+        setScores(nextScores);
+        setStats({
+          highScore,
+          totalGames: nextScores.length,
+          averageScore:
+            nextScores.length > 0
+              ? Math.round(nextScores.reduce((a, b) => a + b, 0) / nextScores.length)
+              : 0,
+          questionsAnswered: nextScores.reduce((a, b) => a + b, 0),
+        });
+      })
+      .catch((err) => {
+        console.log("Failed to get stats:", err);
       });
-    } catch (err) {
-      console.log("Failed to get stats:", err);
-    }
-  };
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, navigate]);
 
   const handleBackToHome = () => {
     navigate("/");
@@ -85,7 +91,7 @@ const Stats = () => {
           </div>
 
           <div className="bg-stone-800/50 rounded-lg p-8 border border-stone-700">
-            <Graph />
+            <Graph scores={scores} />
           </div>
         </div>
       </div>
