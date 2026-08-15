@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Questions from "../modules/play-modules/questions";
 import Scores from "../modules/play-modules/scores";
 import Timer from "../modules/play-modules/Timer";
@@ -10,6 +10,7 @@ const Play = () => {
   const [isGameOver, setIsGameOver] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
   const [selectedDuration, setSelectedDuration] = useState(120);
+  const [runId, setRunId] = useState(0);
   const navigate = useNavigate();
 
   const handleCorrectAnswer = () => {
@@ -20,16 +21,43 @@ const Play = () => {
     setIsGameOver(true);
   };
 
-  const handleBackToHome = () => {
-    navigate("/");
-  };
-
   const handleStartGame = (duration) => {
     setSelectedDuration(duration);
     setScore(0);
     setIsGameOver(false);
     setGameStarted(true);
+    setRunId((id) => id + 1);
   };
+
+  const handleRestart = useCallback(() => {
+    setScore(0);
+    setIsGameOver(false);
+    setGameStarted(true);
+    setRunId((id) => id + 1);
+  }, []);
+
+  const handleQuit = useCallback(() => {
+    navigate("/home");
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!gameStarted) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        handleRestart();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleQuit();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [gameStarted, handleRestart, handleQuit]);
 
   return (
     <div className="min-h-screen text-zinc-200">
@@ -53,6 +81,9 @@ const Play = () => {
                 120s
               </button>
             </div>
+            <p className="text-xs text-zinc-500 font-mono text-center">
+              tab restart · esc quit
+            </p>
           </div>
         </div>
       ) : (
@@ -60,21 +91,26 @@ const Play = () => {
           {!isGameOver ? (
             <div className="flex flex-col items-center">
               <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-4 sm:gap-0 mb-8 sm:mb-32">
-                <Timer onTimeUp={handleTimeUp} timeLeft={selectedDuration} />
-                <button
-                  onClick={handleBackToHome}
-                  className="order-first sm:order-none px-4 sm:px-5 py-2 sm:py-2.5 text-sm font-medium text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded transition-all duration-200"
-                >
-                  back to home
-                </button>
+                <Timer
+                  key={`timer-${runId}`}
+                  onTimeUp={handleTimeUp}
+                  timeLeft={selectedDuration}
+                  hint="tab restart · esc quit"
+                />
                 <Scores score={score} />
               </div>
               <div className="w-full max-w-2xl px-4 sm:px-0">
-                <Questions onCorrectAnswer={handleCorrectAnswer} />
+                <Questions key={`questions-${runId}`} onCorrectAnswer={handleCorrectAnswer} />
               </div>
             </div>
           ) : (
-            <FinalScore score={score} duration={selectedDuration} />
+            <FinalScore
+              key={`final-${runId}`}
+              score={score}
+              duration={selectedDuration}
+              onPlayAgain={handleRestart}
+              onHome={handleQuit}
+            />
           )}
         </div>
       )}

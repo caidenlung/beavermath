@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { post } from "../../../utilities";
 
-const FinalScore = ({ score, duration }) => {
-  const navigate = useNavigate();
+const FinalScore = ({ score, duration, onPlayAgain, onHome }) => {
   const [saveStatus, setSaveStatus] = useState("saving");
   const submittedRef = useRef(false);
 
@@ -15,14 +13,6 @@ const FinalScore = ({ score, duration }) => {
       .then(() => setSaveStatus("saved"))
       .catch(() => setSaveStatus("failed"));
   }, [score, duration]);
-
-  const handlePlayAgain = () => {
-    window.location.reload();
-  };
-
-  const handleHome = () => {
-    navigate("/");
-  };
 
   const statusText =
     saveStatus === "saving"
@@ -37,17 +27,18 @@ const FinalScore = ({ score, duration }) => {
         <p className="text-xs sm:text-sm font-medium text-zinc-400 mb-2 sm:mb-3">final score</p>
         <p className="text-4xl sm:text-6xl font-mono text-orange-400 mb-4 sm:mb-6">{score}</p>
         <div className="text-xs sm:text-sm text-zinc-400 font-mono">{statusText}</div>
+        <p className="text-[10px] sm:text-xs text-zinc-500 font-mono mt-3">tab restart · esc quit</p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-6">
         <button
-          onClick={handlePlayAgain}
+          onClick={onPlayAgain}
           className="px-6 sm:px-8 py-3 sm:py-4 text-sm font-medium text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded transition-all duration-200"
         >
           play again
         </button>
         <button
-          onClick={handleHome}
+          onClick={onHome}
           className="px-6 sm:px-8 py-3 sm:py-4 text-sm font-medium text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 rounded transition-all duration-200"
         >
           back to home

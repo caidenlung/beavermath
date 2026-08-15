@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 
-const Timer = ({ onTimeUp, timeLeft: propTimeLeft, controlled = false }) => {
+const Timer = ({ onTimeUp, timeLeft: propTimeLeft, controlled = false, hint }) => {
   const [time, setTime] = useState(propTimeLeft || 120);
   const onTimeUpRef = useRef(onTimeUp);
   const startedAtRef = useRef(Date.now());
@@ -53,6 +53,11 @@ const Timer = ({ onTimeUp, timeLeft: propTimeLeft, controlled = false }) => {
         time left
       </p>
       <p className="text-xl sm:text-2xl font-mono text-yellow-400 text-center">{time}s</p>
+      {hint ? (
+        <p className="text-[10px] sm:text-xs text-zinc-500 font-mono text-center mt-1.5 sm:mt-2 tracking-wide">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 };
