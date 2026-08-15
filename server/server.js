@@ -55,6 +55,8 @@ mongoose
 
 // create a new express server
 const app = express();
+// Render (and most hosts) terminate TLS at a proxy — needed for secure session cookies
+app.set("trust proxy", 1);
 app.use(validator.checkRoutes);
 
 // allow us to process POST requests

@@ -5,15 +5,24 @@ import { UserContext } from "../App";
 import NavBar from "../modules/NavBar";
 
 const Home = () => {
-  const { userId } = useContext(UserContext);
+  const { userId, authChecked } = useContext(UserContext);
   const navigate = useNavigate();
 
-  // If not logged in, redirect to login page
+  // If not logged in, redirect to login page (wait for whoami first)
   React.useEffect(() => {
+    if (!authChecked) return;
     if (!userId) {
       navigate("/");
     }
-  }, [userId, navigate]);
+  }, [userId, authChecked, navigate]);
+
+  if (!authChecked || !userId) {
+    return (
+      <div className="min-h-screen text-stone-200 flex items-center justify-center">
+        <p className="text-sm text-stone-400 font-mono">loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-stone-200 flex items-center justify-center p-4">
