@@ -30,20 +30,51 @@ function sanitizeDuel(duel) {
   return obj;
 }
 
-function buildLeaderboard(users) {
-  return users
-    .map((user) => ({
-      name: user.name,
-      score: user.highScore > 0 ? user.highScore : maxOf(user.scores || []),
-    }))
-    .filter((user) => user.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
+/** Enough questions for the duration without shipping a huge bank */
+function duelQuestionCount(durationSeconds) {
+  return Math.min(500, Math.max(100, Math.ceil(Number(durationSeconds) * 2) || 100));
+}
+
+async function backfillHighScoresIfNeeded() {
+  // Legacy users may still have scores[] but highScore left at 0 after the denormalization deploy.
+  // Only touch those users — not "skip entirely if anyone already has a highScore".
+  const users = await User.find({
+    $and: [
+      { "scores.0": { $exists: true } },
+      { $or: [{ highScore: { $exists: false } }, { highScore: null }, { highScore: { $lte: 0 } }] },
+    ],
+  }).select("scores highScore");
+
+  if (users.length === 0) return;
+
+  await Promise.all(
+    users.map((user) => {
+      const computed = maxOf(user.scores || []);
+      if (computed <= (user.highScore || 0)) return null;
+      user.highScore = computed;
+      return user.save();
+    })
+  );
+}
+
+async function fetchLeaderboard() {
+  await backfillHighScoresIfNeeded();
+
+  const users = await User.find({ highScore: { $gt: 0 } })
+    .sort({ highScore: -1 })
+    .limit(10)
+    .select("name highScore")
+    .lean();
+
+  return users.map((user) => ({
+    name: user.name,
+    score: user.highScore,
+  }));
 }
 
 async function emitLeaderboard() {
-  const users = await User.find({}).select("name scores highScore");
-  socketManager.getIo().emit("leaderboard", buildLeaderboard(users));
+  const leaderboard = await fetchLeaderboard();
+  socketManager.getIo().emit("leaderboard", leaderboard);
 }
 
 router.post("/login", auth.login);
@@ -64,8 +95,7 @@ router.post("/initsocket", (req, res) => {
 
 router.get("/leaderboard", async (req, res) => {
   try {
-    const users = await User.find({}).select("name scores highScore");
-    res.send(buildLeaderboard(users));
+    res.send(await fetchLeaderboard());
   } catch (err) {
     console.error("Failed to get leaderboard:", err);
     res.status(500).send({ error: "Failed to get leaderboard" });
@@ -212,7 +242,10 @@ router.post("/duel/:code/start", auth.ensureLoggedIn, async (req, res) => {
 
     if (!duel.questions || duel.questions.length === 0) {
       const seed = Date.now() ^ (Math.random() * 0x100000000);
-      duel.questions = generateProblems(500, createSeededRandom(seed));
+      duel.questions = generateProblems(
+        duelQuestionCount(duel.duration),
+        createSeededRandom(seed)
+      );
     }
 
     duel.status = "in_progress";
