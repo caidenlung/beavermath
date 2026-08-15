@@ -24,14 +24,18 @@ const Stats = () => {
   const getStats = async () => {
     try {
       const response = await get("/api/scores");
-      const scores = response.scores;
-      const highScore = scores.length > 0 ? Math.max(...scores) : 0;
+      const scores = response.scores || [];
+      let highScore = response.highScore || 0;
+      for (const s of scores) {
+        if (s > highScore) highScore = s;
+      }
       const totalGames = scores.length;
-      const averageScore = scores.length > 0 
-        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) 
-        : 0;
+      const averageScore =
+        scores.length > 0
+          ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : 0;
       const questionsAnswered = scores.reduce((a, b) => a + b, 0);
-      
+
       setStats({
         highScore,
         totalGames,

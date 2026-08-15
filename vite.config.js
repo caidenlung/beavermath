@@ -6,6 +6,11 @@ import path from 'path';
 export default defineConfig({
   plugins: [react(), svgr()],
   root: path.resolve(__dirname, 'client'), // Set the root directory for Vite
+  resolve: {
+    alias: {
+      '@shared': path.resolve(__dirname, 'shared'),
+    },
+  },
   build: {
     outDir: path.resolve(__dirname, 'client/dist'), // Output directory for production build
   },

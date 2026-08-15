@@ -61,12 +61,22 @@ app.use(validator.checkRoutes);
 app.use(express.json());
 
 // set up a session, which will persist login data across requests
+const sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret) {
+  console.warn(
+    "WARNING: SESSION_SECRET is not set in .env — using an insecure development default"
+  );
+}
 app.use(
   session({
-    // TODO: add a SESSION_SECRET string in your .env file, and replace the secret with process.env.SESSION_SECRET
-    secret: "session-secret",
+    secret: sessionSecret || "dev-only-session-secret-change-me",
     resave: false,
     saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    },
   })
 );
 

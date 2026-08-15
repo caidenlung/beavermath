@@ -4,7 +4,7 @@ const UserSchema = new mongoose.Schema({
   name: String,
   googleid: String,
   scores: { type: [Number], default: [] },
+  highScore: { type: Number, default: 0 },
 });
 
-// compile model from schema
 module.exports = mongoose.model("user", UserSchema);

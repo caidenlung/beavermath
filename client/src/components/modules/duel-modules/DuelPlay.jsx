@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Timer from "../play-modules/Timer";
 import Scores from "../play-modules/scores";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -17,87 +17,98 @@ const DuelPlay = () => {
   const [userAnswer, setUserAnswer] = useState("");
   const [isGameOver, setIsGameOver] = useState(false);
   const [winner, setWinner] = useState(null);
-  const [isHost, setIsHost] = useState(false);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [myName, setMyName] = useState("");
   const [opponentName, setOpponentName] = useState("");
   const [userId, setUserId] = useState(null);
 
+  const myNameRef = useRef("");
+  const opponentNameRef = useRef("");
+  const isHostRef = useRef(false);
+  const endedRef = useRef(false);
+
   useEffect(() => {
-    // Get current user's ID
     get("/api/whoami").then((user) => {
-      setUserId(user._id);
+      if (user && user._id) setUserId(user._id);
     });
   }, []);
 
   useEffect(() => {
-    if (!duel || !startTime || !duration || !userId) {
-      console.log("Missing required data:", { duel, startTime, duration, userId });
-      if (duel && startTime && duration) return; // Only navigate away if missing duel data
+    if (!duel || !startTime || !duration) {
       navigate("/duel");
       return;
     }
+    if (!userId) return;
 
-    // Determine if user is host based on user ID
     const isUserHost = userId === duel.host._id;
-    setIsHost(isUserHost);
-    console.log("User is host:", isUserHost);
+    isHostRef.current = isUserHost;
 
-    // Set player names based on role
-    if (isUserHost) {
-      setMyName(duel.host.name);
-      setOpponentName(duel.opponent.name);
-    } else {
-      setMyName(duel.opponent.name);
-      setOpponentName(duel.host.name);
-    }
+    const nextMyName = isUserHost ? duel.host.name : duel.opponent.name;
+    const nextOpponentName = isUserHost ? duel.opponent.name : duel.host.name;
+    setMyName(nextMyName);
+    setOpponentName(nextOpponentName);
+    myNameRef.current = nextMyName;
+    opponentNameRef.current = nextOpponentName;
 
-    // Set initial question
     if (duel.questions && duel.questions.length > 0) {
       setCurrentQuestion(duel.questions[0]);
+      setQuestionIndex(0);
     }
 
-    // Listen for score updates
-    socket.on("score_updated", ({ hostScore, opponentScore }) => {
-      if (isUserHost) {
+    const onScoreUpdated = ({ hostScore, opponentScore }) => {
+      if (isHostRef.current) {
         setMyScore(hostScore);
         setOpponentScore(opponentScore);
       } else {
         setMyScore(opponentScore);
         setOpponentScore(hostScore);
       }
-    });
+    };
 
-    // Listen for game completion
-    socket.on("duel_complete", ({ hostScore, opponentScore, winner }) => {
+    const onDuelComplete = ({ hostScore, opponentScore, winner: winnerRole }) => {
       setIsGameOver(true);
-      if (isUserHost) {
+      if (isHostRef.current) {
         setMyScore(hostScore);
         setOpponentScore(opponentScore);
-        setWinner(winner === "host" ? myName : winner === "opponent" ? opponentName : "Tie");
+        setWinner(
+          winnerRole === "host"
+            ? myNameRef.current
+            : winnerRole === "opponent"
+              ? opponentNameRef.current
+              : "Tie"
+        );
       } else {
         setMyScore(opponentScore);
         setOpponentScore(hostScore);
-        setWinner(winner === "opponent" ? myName : winner === "host" ? opponentName : "Tie");
+        setWinner(
+          winnerRole === "opponent"
+            ? myNameRef.current
+            : winnerRole === "host"
+              ? opponentNameRef.current
+              : "Tie"
+        );
       }
-    });
+    };
+
+    socket.on("score_updated", onScoreUpdated);
+    socket.on("duel_complete", onDuelComplete);
 
     return () => {
-      socket.off("score_updated");
-      socket.off("duel_complete");
+      socket.off("score_updated", onScoreUpdated);
+      socket.off("duel_complete", onDuelComplete);
     };
-  }, [duel, startTime, duration, userId, navigate, myName, opponentName]);
+  }, [duel, startTime, duration, userId, navigate]);
 
   useEffect(() => {
-    if (!startTime || !duration) return;
+    if (!startTime || !duration || !duel?.code) return;
 
     const endTime = new Date(startTime).getTime() + duration * 1000;
     const timer = setInterval(() => {
-      const now = Date.now();
-      const remaining = Math.max(0, endTime - now);
+      const remaining = Math.max(0, endTime - Date.now());
       setTimeLeft(Math.ceil(remaining / 1000));
 
-      if (remaining === 0) {
+      if (remaining === 0 && !endedRef.current) {
+        endedRef.current = true;
         clearInterval(timer);
         socket.emit("duel_ended", duel.code);
       }
@@ -106,31 +117,34 @@ const DuelPlay = () => {
     return () => clearInterval(timer);
   }, [startTime, duration, duel]);
 
-  const handleCorrectAnswer = () => {
-    // Update score
+  const advanceOnCorrect = () => {
     setMyScore((prev) => {
       const newScore = prev + 1;
       socket.emit("update_score", {
         duelCode: duel.code,
-        newScore: newScore,
+        newScore,
       });
       return newScore;
     });
 
-    // Clear input and move to next question
     setUserAnswer("");
-    if (questionIndex < duel.questions.length - 1) {
-      setQuestionIndex((prev) => prev + 1);
-      setCurrentQuestion(duel.questions[questionIndex + 1]);
+    setQuestionIndex((prev) => {
+      const next = prev + 1;
+      if (duel.questions && next < duel.questions.length) {
+        setCurrentQuestion(duel.questions[next]);
+      }
+      return next;
+    });
+  };
+
+  const tryAnswer = (rawValue) => {
+    if (!currentQuestion || isGameOver) return;
+    if (rawValue === "") return;
+
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!Number.isNaN(parsed) && parsed === currentQuestion.answer) {
+      advanceOnCorrect();
     }
-  };
-
-  const handleBackToDuels = () => {
-    navigate("/duel");
-  };
-
-  const handleBackToHome = () => {
-    navigate("/");
   };
 
   if (!duel || !currentQuestion) {
@@ -142,7 +156,7 @@ const DuelPlay = () => {
       {!isGameOver ? (
         <div className="h-screen flex flex-col">
           <div className="w-full px-4 sm:px-12 py-6 flex justify-between items-center">
-            <Timer timeLeft={timeLeft} />
+            <Timer timeLeft={timeLeft} controlled />
             <div className="bg-zinc-800/50 rounded-lg px-6 py-4 border border-zinc-700">
               <p className="text-sm text-zinc-400 mb-1 text-center">{myName.toLowerCase()}</p>
               <p className="text-2xl font-mono text-orange-400 text-center">{myScore}</p>
@@ -158,21 +172,16 @@ const DuelPlay = () => {
 
                 <div className="w-full max-w-sm">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={userAnswer}
                     onChange={(e) => {
-                      setUserAnswer(e.target.value);
-                      if (e.target.value === currentQuestion?.answer.toString()) {
-                        handleCorrectAnswer();
-                      }
+                      const value = e.target.value;
+                      setUserAnswer(value);
+                      tryAnswer(value);
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleCorrectAnswer();
-                      }
-                    }}
-                    className="w-full bg-zinc-900/50 border border-zinc-700 rounded-lg px-6 py-5 text-4xl font-mono text-center text-white focus:outline-none focus:border-orange-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [-moz-appearance:textfield]"
+                    className="w-full bg-zinc-900/50 border border-zinc-700 rounded-lg px-6 py-5 text-4xl font-mono text-center text-white focus:outline-none focus:border-orange-500 transition-colors"
                     autoComplete="off"
                     autoFocus
                   />

@@ -11,8 +11,11 @@ const HighScore = () => {
   const getHighScore = async () => {
     try {
       const response = await get("/api/scores");
-      const scores = response.scores;
-      const maxScore = scores.length > 0 ? Math.max(...scores) : 0;
+      const scores = response.scores || [];
+      let maxScore = response.highScore || 0;
+      for (const s of scores) {
+        if (s > maxScore) maxScore = s;
+      }
       setHighScore(maxScore);
     } catch (err) {
       console.log("Failed to get high score:", err);

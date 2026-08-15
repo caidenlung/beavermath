@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Questions from "../modules/play-modules/questions";
 import Scores from "../modules/play-modules/scores";
 import Timer from "../modules/play-modules/Timer";
@@ -13,7 +13,7 @@ const Play = () => {
   const navigate = useNavigate();
 
   const handleCorrectAnswer = () => {
-    setScore(score + 1);
+    setScore((prev) => prev + 1);
   };
 
   const handleTimeUp = () => {
@@ -26,6 +26,8 @@ const Play = () => {
 
   const handleStartGame = (duration) => {
     setSelectedDuration(duration);
+    setScore(0);
+    setIsGameOver(false);
     setGameStarted(true);
   };
 
@@ -72,7 +74,7 @@ const Play = () => {
               </div>
             </div>
           ) : (
-            <FinalScore score={score} />
+            <FinalScore score={score} duration={selectedDuration} />
           )}
         </div>
       )}

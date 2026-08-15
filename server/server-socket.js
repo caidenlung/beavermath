@@ -1,5 +1,5 @@
 const Duel = require("./models/duel");
-const mongoose = require("mongoose");
+const { maxAllowedScore } = require("../shared/problems.cjs");
 
 let io;
 
@@ -14,8 +14,6 @@ const getSocketFromSocketID = (socketid) => io.sockets.sockets.get(socketid);
 const addUser = (user, socket) => {
   const oldSocket = userToSocketMap[user._id];
   if (oldSocket && oldSocket.id !== socket.id) {
-    // there was an old tab open for this user, force it to disconnect
-    // FIXME: is this the behavior you want?
     oldSocket.disconnect();
     delete socketToUserMap[oldSocket.id];
   }
@@ -29,54 +27,54 @@ const removeUser = (user, socket) => {
   delete socketToUserMap[socket.id];
 };
 
+function isParticipant(duel, userId) {
+  const id = userId.toString();
+  const hostId = duel.host?._id?.toString?.() || duel.host?.toString?.();
+  const opponentId = duel.opponent?._id?.toString?.() || duel.opponent?.toString?.();
+  return id === hostId || id === opponentId;
+}
+
 module.exports = {
   init: (http) => {
     io = require("socket.io")(http);
 
     io.on("connection", (socket) => {
       console.log(`socket has connected ${socket.id}`);
-      socket.on("disconnect", (reason) => {
+
+      socket.on("disconnect", () => {
         const user = getUserFromSocketID(socket.id);
         removeUser(user, socket);
       });
+
       socket.on("join_duel", async (duelCode) => {
         try {
-          console.log(`Socket ${socket.id} joining duel room: ${duelCode}`);
-          
-          // Get the user and duel info
           const user = getUserFromSocketID(socket.id);
-          if (!user) {
-            console.log("No user found for socket:", socket.id);
-            return;
-          }
+          if (!user) return;
 
           const duel = await Duel.findOne({ code: duelCode })
             .populate("host", "name")
             .populate("opponent", "name");
-          
-          if (!duel) {
-            console.log("No duel found with code:", duelCode);
-            return;
-          }
 
-          // Join the room
+          if (!duel) return;
+          if (!isParticipant(duel, user._id)) return;
+
           socket.join(duelCode);
-          console.log(`Socket ${socket.id} (${user.name}) joined room: ${duelCode}`);
 
-          // If this is the opponent joining, notify the host
-          if (duel.opponent && duel.opponent._id && user._id && 
-              duel.opponent._id.toString() === user._id.toString()) {
-            console.log("Opponent joined, notifying host");
-            
-            // Get host's socket and notify them directly
+          if (
+            duel.opponent &&
+            duel.opponent._id &&
+            user._id &&
+            duel.opponent._id.toString() === user._id.toString()
+          ) {
             const hostSocket = getSocketFromUserID(duel.host._id);
             if (hostSocket) {
               hostSocket.emit("opponent_joined", {
-                duel,
+                duel: {
+                  ...duel.toObject(),
+                  questions: (duel.questions || []).map(({ question }) => ({ question })),
+                },
                 opponentName: user.name,
               });
-            } else {
-              console.log("Warning: Could not find socket for host", duel.host._id);
             }
           }
         } catch (error) {
@@ -85,56 +83,83 @@ module.exports = {
       });
 
       socket.on("leave_duel", (duelCode) => {
-        socket.leave(duelCode);
+        if (typeof duelCode === "string") {
+          socket.leave(duelCode);
+        }
       });
 
-      socket.on("duel_update", (data) => {
-        io.to(data.duelCode).emit("duel_state_update", data);
-      });
-
-      // Handle score updates
       socket.on("update_score", async ({ duelCode, newScore }) => {
         try {
           const user = getUserFromSocketID(socket.id);
           if (!user) return;
 
           const duel = await Duel.findOne({ code: duelCode });
-          if (!duel) return;
+          if (!duel || duel.status !== "in_progress") return;
+          if (!isParticipant(duel, user._id)) return;
 
-          // Update the appropriate score based on whether the user is host or opponent
-          if (user._id.toString() === duel.host._id.toString()) {
-            duel.hostScore = newScore;
-          } else if (user._id.toString() === duel.opponent._id.toString()) {
-            duel.opponentScore = newScore;
+          const score = Number(newScore);
+          const maxScore = Math.min(duel.questions?.length || 500, maxAllowedScore(duel.duration));
+          if (!Number.isInteger(score) || score < 0 || score > maxScore) return;
+
+          const userId = user._id.toString();
+          const hostId = duel.host.toString();
+          const opponentId = duel.opponent ? duel.opponent.toString() : null;
+
+          if (userId === hostId) {
+            if (score !== duel.hostScore + 1) return;
+            duel.hostScore = score;
+          } else if (opponentId && userId === opponentId) {
+            if (score !== duel.opponentScore + 1) return;
+            duel.opponentScore = score;
+          } else {
+            return;
           }
 
           await duel.save();
 
-          // Emit updated scores to both players
           io.to(duelCode).emit("score_updated", {
             hostScore: duel.hostScore,
-            opponentScore: duel.opponentScore
+            opponentScore: duel.opponentScore,
           });
         } catch (error) {
           console.error("Error updating score:", error);
         }
       });
 
-      // Handle duel completion
       socket.on("duel_ended", async (duelCode) => {
         try {
+          const user = getUserFromSocketID(socket.id);
+          if (!user || typeof duelCode !== "string") return;
+
           const duel = await Duel.findOne({ code: duelCode });
           if (!duel) return;
+          if (!isParticipant(duel, user._id)) return;
+          if (duel.status === "completed") {
+            io.to(duelCode).emit("duel_complete", {
+              hostScore: duel.hostScore,
+              opponentScore: duel.opponentScore,
+              winner:
+                duel.hostScore > duel.opponentScore
+                  ? "host"
+                  : duel.opponentScore > duel.hostScore
+                    ? "opponent"
+                    : "tie",
+            });
+            return;
+          }
 
           duel.status = "completed";
           await duel.save();
 
-          // Emit final scores and winner
           io.to(duelCode).emit("duel_complete", {
             hostScore: duel.hostScore,
             opponentScore: duel.opponentScore,
-            winner: duel.hostScore > duel.opponentScore ? "host" : 
-                   duel.opponentScore > duel.hostScore ? "opponent" : "tie"
+            winner:
+              duel.hostScore > duel.opponentScore
+                ? "host"
+                : duel.opponentScore > duel.hostScore
+                  ? "opponent"
+                  : "tie",
           });
         } catch (error) {
           console.error("Error ending duel:", error);
